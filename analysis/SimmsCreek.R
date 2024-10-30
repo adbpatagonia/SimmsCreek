@@ -14,6 +14,10 @@
 # libraries -----
 library(data.table)
 library(tidyverse)
+library(mgcv)
+library(gratia)
+library(stringr)
+library(gam.hp)
 
 # functions -----
 source('R/plottheme.r')
@@ -30,6 +34,12 @@ simmscreek.dat[, V1 := NULL]
 
 regional.dat <- regional.dat[species %in% c("Coho" )]
 simmscreek.dat <- simmscreek.dat[Species %in% c("CO", "CT" )]
+
+simmscreek.dat[, ageclass := NA]
+simmscreek.dat[Species  == "CT",
+               ageclass := ifelse(Length >= 230, "adult", "juvenile")]
+
+
 
 # EDA ----
 simmscreek.dat %>%
@@ -107,7 +117,7 @@ left_join(
     mutate(Year = Year -1),
   by = "Year"
 ) %>%
-  filter(ad_CO < 200) %>%
+  # filter(ad_CO < 200) %>%
   ggplot(., aes(ad_CO, juv_CT )) +
   geom_point()  +
   ggtitle("Juvenile CT as a function of Adult CO the previous fall. All data from Simms Creek")
@@ -131,3 +141,71 @@ left_join(
   ggplot(., aes(ad_CO, juv_CO )) +
   geom_point()  +
   ggtitle("Juvenile CO as a function of Adult CO the previous fall. All data from Simms Creek")
+
+
+simmscreek.dat %>%
+  group_by(Species, Year, Period) %>%
+  reframe(n.fish = n()) %>%
+  filter(Period == "Spring") %>%
+  pivot_wider(names_from = Species, values_from = n.fish) %>%
+  ggplot(.,aes(x = CO, y = CT)) +
+  geom_point() +
+  geom_smooth()
+
+
+simmscreek.dat %>%
+  group_by(Species, Year, Period, ageclass) %>%
+  reframe(n.fish = n()) %>%
+  filter(Period == "Spring") %>%
+  filter(ageclass %in% c(NA, "juvenile")) %>%
+  # pivot_wider(names_from = Species, values_from = n.fish) %>%
+  ggplot(.,aes(x = Year, y = n.fish, color = Species)) +
+  geom_point() +
+  geom_smooth()
+
+
+simmscreek.dat %>%
+  filter(Period == "Spring") %>%
+  filter(Species == "CT") %>%
+  ggplot(., aes(x=Length))+
+  geom_histogram() +
+  facet_wrap(Year ~ .)
+
+
+CT.simms <- simmscreek.dat %>%
+  filter(Period == "Spring") %>%
+  group_by(Year, Species, ageclass) %>%
+  filter(Species == "CT") %>%
+  reframe(n.fish = n()
+          ) %>%
+  data.table()
+
+CT.simms[ageclass == "adult", Year := Year -2]
+
+CT.simms %>%
+  pivot_wider(names_from = ageclass, values_from = n.fish) %>%
+  ggplot(., aes(x = adult, y = juvenile)) +
+  geom_point()
+
+CT.simms[ageclass != "adult", n.fish := n.fish/100]
+
+ggplot(CT.simms, aes(x = Year, y = n.fish, color = ageclass)) +
+  geom_point() +
+  geom_smooth()
+
+
+ggplot(CT.simms, aes(x = Year, y = n.fish, color = ageclass)) +
+  geom_point() +
+  geom_smooth()
+
+# HGAMs ------
+
+juvs.simms <- simmscreek.dat %>%
+  group_by(Species, Year, Period, ageclass) %>%
+  reframe(n.fish = n()) %>%
+  filter(Period == "Spring") %>%
+  filter(ageclass %in% c(NA, "juvenile")) %>%
+  select(-ageclass) %>%
+  data.table()
+
+source('analysis/SimmsCreek_HGAMs.R')
